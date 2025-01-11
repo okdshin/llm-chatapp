@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify
-import webview
 import os
 
 app = Flask(__name__, static_folder='../frontend/dist')
@@ -29,14 +28,5 @@ def chat():
 def serve_frontend():
     return app.send_static_file('index.html')
 
-def start_server():
-    app.run(port=5000)
-
 if __name__ == '__main__':
-    # Start Flask in a separate thread
-    import threading
-    threading.Thread(target=start_server, daemon=True).start()
-    
-    # Create and start webview window
-    webview.create_window('Chat App', 'http://localhost:5000', width=800, height=600)
-    webview.start()
+    app.run(port=5000)
