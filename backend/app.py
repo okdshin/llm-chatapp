@@ -32,5 +32,6 @@ def serve_frontend():
 def serve_assets(filename):
     return send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
 
+# 開発時のみ使用
 if __name__ == '__main__':
     app.run(port=5000)
