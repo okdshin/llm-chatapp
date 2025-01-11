@@ -1,6 +1,8 @@
 <template>
   <div class="chat-container">
-    <h1>Simple Chat</h1>
+    <div class="header">
+      <h1>Simple Chat</h1>
+    </div>
     
     <div class="messages" ref="messageContainer">
       <div v-for="(message, index) in messages" :key="index" 
@@ -28,10 +30,21 @@ export default {
     }
   },
   mounted() {
-    // コンポーネントのマウント時にフォーカスを設定
     this.$refs.messageInput.focus();
+    window.addEventListener('resize', this.adjustMessageContainerHeight);
+    this.adjustMessageContainerHeight();
+  },
+  beforeDestroy() {
+    window.removeEventListener('resize', this.adjustMessageContainerHeight);
   },
   methods: {
+    adjustMessageContainerHeight() {
+      const header = document.querySelector('.header').offsetHeight;
+      const input = document.querySelector('.input-container').offsetHeight;
+      const windowHeight = window.innerHeight;
+      const messageContainer = this.$refs.messageContainer;
+      messageContainer.style.height = `${windowHeight - header - input - 40}px`; // 40pxはパディング分
+    },
     async sendMessage() {
       if (!this.userInput.trim()) return;
       
@@ -57,7 +70,6 @@ export default {
           content: data.response
         });
 
-        // メッセージ送信後も入力フォームにフォーカスを戻す
         this.$nextTick(() => {
           this.$refs.messageInput.focus();
         });
@@ -67,7 +79,6 @@ export default {
     }
   },
   updated() {
-    // Scroll to bottom when new messages arrive
     this.$nextTick(() => {
       const container = this.$refs.messageContainer;
       container.scrollTop = container.scrollHeight;
@@ -78,13 +89,24 @@ export default {
 
 <style>
 .chat-container {
-  max-width: 800px;
-  margin: 0 auto;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   padding: 20px;
+  box-sizing: border-box;
+}
+
+.header {
+  flex-shrink: 0;
+}
+
+.header h1 {
+  margin: 0;
+  padding-bottom: 20px;
 }
 
 .messages {
-  height: 400px;
+  flex-grow: 1;
   overflow-y: auto;
   padding: 10px;
   margin-bottom: 20px;
@@ -94,21 +116,24 @@ export default {
   margin-bottom: 10px;
   padding: 10px;
   border-radius: 4px;
+  max-width: 80%;
 }
 
 .message.user {
   background-color: #f0f0f0;
-  margin-left: 20%;
+  margin-left: auto;
 }
 
 .message.assistant {
   background-color: #e3f2fd;
-  margin-right: 20%;
+  margin-right: auto;
 }
 
 .input-container {
+  flex-shrink: 0;
   display: flex;
   gap: 10px;
+  padding-top: 10px;
 }
 
 textarea {
@@ -119,5 +144,13 @@ textarea {
 
 button {
   align-self: flex-end;
+}
+
+/* ページ全体のスタイルリセット */
+body {
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
 }
 </style>
