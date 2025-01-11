@@ -21,3 +21,11 @@ build/
 dist/
 *.spec
 !chat.spec
+
+# Nuitka
+*.build/
+*.dist/
+*.onefile-build/
+*.exe
+run_app.bin
+run_app.cmd
