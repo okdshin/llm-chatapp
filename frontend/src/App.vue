@@ -6,8 +6,10 @@
     
     <div class="messages" ref="messageContainer">
       <div v-for="(message, index) in messages" :key="index" 
-           :class="['message', message.role]">
-        <p>{{ message.content }}</p>
+           :class="['message-wrapper', message.role]">
+        <div class="message">
+          <p>{{ message.content }}</p>
+        </div>
       </div>
     </div>
 
@@ -112,12 +114,15 @@ export default {
   margin-bottom: 20px;
 }
 
-.message {
+.message-wrapper {
+  width: 100%;
+  display: flex;
   margin-bottom: 10px;
+}
+
+.message {
   padding: 10px;
   border-radius: 4px;
-  display: inline-block;
-  max-width: 80%;
   word-wrap: break-word;
 }
 
@@ -126,12 +131,13 @@ export default {
   white-space: pre-wrap;
 }
 
-.message.user {
+.user .message {
   background-color: #f0f0f0;
   width: fit-content;
+  max-width: 80%;
 }
 
-.message.assistant {
+.assistant .message {
   background-color: #e3f2fd;
   width: 80%;
 }
