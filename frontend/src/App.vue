@@ -43,7 +43,7 @@ export default {
       const input = document.querySelector('.input-container').offsetHeight;
       const windowHeight = window.innerHeight;
       const messageContainer = this.$refs.messageContainer;
-      messageContainer.style.height = `${windowHeight - header - input - 40}px`; // 40pxはパディング分
+      messageContainer.style.height = `${windowHeight - header - input - 40}px`;
     },
     async sendMessage() {
       if (!this.userInput.trim()) return;
@@ -121,12 +121,10 @@ export default {
 
 .message.user {
   background-color: #f0f0f0;
-  margin-left: auto;
 }
 
 .message.assistant {
   background-color: #e3f2fd;
-  margin-right: auto;
 }
 
 .input-container {
