@@ -1,24 +1,26 @@
 <template>
-  <div class="chat-container">
-    <div class="header">
-      <h1>Simple Chat</h1>
-    </div>
-    
-    <div class="messages" ref="messageContainer">
-      <div v-for="(message, index) in messages" :key="index" 
-           :class="['message-wrapper', message.role]">
-        <div class="message">
-          <p>{{ message.content }}</p>
+  <div class="page-container">
+    <div class="chat-container">
+      <div class="header">
+        <h1>Simple Chat</h1>
+      </div>
+      
+      <div class="messages" ref="messageContainer">
+        <div v-for="(message, index) in messages" :key="index" 
+            :class="['message-wrapper', message.role]">
+          <div class="message">
+            <p>{{ message.content }}</p>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="input-container">
-      <textarea ref="messageInput"
-                v-model="userInput" 
-                @keyup.enter="sendMessage" 
-                placeholder="Type your message..."></textarea>
-      <button @click="sendMessage">Send</button>
+      <div class="input-container">
+        <textarea ref="messageInput"
+                  v-model="userInput" 
+                  @keyup.enter="sendMessage" 
+                  placeholder="Type your message..."></textarea>
+        <button @click="sendMessage">Send</button>
+      </div>
     </div>
   </div>
 </template>
@@ -90,12 +92,22 @@ export default {
 </script>
 
 <style>
+.page-container {
+  display: flex;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
 .chat-container {
   height: 100vh;
   display: flex;
   flex-direction: column;
   padding: 20px;
   box-sizing: border-box;
+  width: 100%;
+  max-width: 800px;
 }
 
 .header {
