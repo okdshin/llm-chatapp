@@ -5,7 +5,6 @@
     <div class="messages" ref="messageContainer">
       <div v-for="(message, index) in messages" :key="index" 
            :class="['message', message.role]">
-        <strong>{{ message.role === 'user' ? 'You' : 'Assistant' }}:</strong>
         <p>{{ message.content }}</p>
       </div>
     </div>
@@ -77,7 +76,6 @@ export default {
 .messages {
   height: 400px;
   overflow-y: auto;
-  border: 1px solid #ccc;
   padding: 10px;
   margin-bottom: 20px;
 }
@@ -90,10 +88,12 @@ export default {
 
 .message.user {
   background-color: #f0f0f0;
+  margin-left: 20%;
 }
 
 .message.assistant {
   background-color: #e3f2fd;
+  margin-right: 20%;
 }
 
 .input-container {
