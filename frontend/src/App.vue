@@ -116,15 +116,24 @@ export default {
   margin-bottom: 10px;
   padding: 10px;
   border-radius: 4px;
+  display: inline-block;
   max-width: 80%;
+  word-wrap: break-word;
+}
+
+.message p {
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 .message.user {
   background-color: #f0f0f0;
+  width: fit-content;
 }
 
 .message.assistant {
   background-color: #e3f2fd;
+  width: 80%;
 }
 
 .input-container {
