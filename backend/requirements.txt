@@ -2,4 +2,4 @@ flask
 werkzeug
 pywebview
 requests
-pyinstaller
+nuitka
