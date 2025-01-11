@@ -1,5 +1,23 @@
 <template>
   <div class="page-container">
+    <!-- サイドメニュー -->
+    <div class="side-menu">
+      <div class="menu-header">
+        <h2>Chats</h2>
+        <button @click="createNewChat" class="new-chat-btn">New Chat</button>
+      </div>
+      <div class="chat-list">
+        <div v-for="chat in chats" 
+             :key="chat.id" 
+             :class="['chat-item', { active: currentChatId === chat.id }]"
+             @click="loadChat(chat.id)">
+          <p class="chat-preview">{{ chat.preview }}</p>
+          <small class="chat-date">{{ formatDate(chat.created_at) }}</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- メインチャットエリア -->
     <div class="chat-container">
       <div class="header">
         <h1>Simple Chat</h1>
@@ -30,18 +48,50 @@ export default {
   data() {
     return {
       messages: [],
-      userInput: ''
+      userInput: '',
+      chats: [],
+      currentChatId: null
     }
   },
-  mounted() {
+  async mounted() {
     this.$refs.messageInput.focus();
     window.addEventListener('resize', this.adjustMessageContainerHeight);
     this.adjustMessageContainerHeight();
+    await this.loadChats();
+    if (!this.currentChatId) {
+      await this.createNewChat();
+    }
   },
   beforeDestroy() {
     window.removeEventListener('resize', this.adjustMessageContainerHeight);
   },
   methods: {
+    formatDate(dateStr) {
+      return new Date(dateStr).toLocaleString();
+    },
+    async loadChats() {
+      try {
+        const response = await fetch('/api/chats');
+        this.chats = await response.json();
+      } catch (error) {
+        console.error('Error loading chats:', error);
+      }
+    },
+    async createNewChat() {
+      this.currentChatId = Date.now().toString();
+      this.messages = [];
+      await this.loadChats();
+    },
+    async loadChat(chatId) {
+      try {
+        const response = await fetch(`/api/chats/${chatId}`);
+        const chatData = await response.json();
+        this.messages = chatData.messages;
+        this.currentChatId = chatId;
+      } catch (error) {
+        console.error('Error loading chat:', error);
+      }
+    },
     adjustMessageContainerHeight() {
       const header = document.querySelector('.header').offsetHeight;
       const input = document.querySelector('.input-container').offsetHeight;
@@ -53,14 +103,10 @@ export default {
       if (!this.userInput.trim()) return;
       
       const message = this.userInput;
-      this.messages.push({
-        role: 'user',
-        content: message
-      });
       this.userInput = '';
 
       try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch(`/api/chats/${this.currentChatId}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -68,11 +114,9 @@ export default {
           body: JSON.stringify({ message })
         });
         
-        const data = await response.json();
-        this.messages.push({
-          role: 'assistant',
-          content: data.response
-        });
+        const chatData = await response.json();
+        await this.loadChat(this.currentChatId);
+        await this.loadChats();
 
         this.$nextTick(() => {
           this.$refs.messageInput.focus();
@@ -94,20 +138,76 @@ export default {
 <style>
 .page-container {
   display: flex;
-  justify-content: center;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
 }
 
+.side-menu {
+  width: 260px;
+  background-color: #f8f9fa;
+  border-right: 1px solid #dee2e6;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.menu-header {
+  padding: 20px;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.menu-header h2 {
+  margin: 0;
+  margin-bottom: 10px;
+}
+
+.new-chat-btn {
+  width: 100%;
+  padding: 8px;
+}
+
+.chat-list {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.chat-item {
+  padding: 10px;
+  margin-bottom: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.chat-item:hover {
+  background-color: #e9ecef;
+}
+
+.chat-item.active {
+  background-color: #e3f2fd;
+}
+
+.chat-preview {
+  margin: 0;
+  font-size: 0.9em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-date {
+  color: #6c757d;
+  font-size: 0.8em;
+}
+
 .chat-container {
-  height: 100vh;
+  flex-grow: 1;
   display: flex;
   flex-direction: column;
   padding: 20px;
   box-sizing: border-box;
-  width: 100%;
-  max-width: 800px;
+  max-width: calc(100vw - 260px);
 }
 
 .header {
