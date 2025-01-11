@@ -295,6 +295,8 @@ export default {
   padding: 10px;
   border-radius: 4px;
   word-wrap: break-word;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .message p {
@@ -305,12 +307,12 @@ export default {
 .user .message {
   background-color: #f0f0f0;
   width: fit-content;
-  max-width: 80%;
+  max-width: 100%;
 }
 
 .assistant .message {
   background-color: #e3f2fd;
-  width: 80%;
+  width: 100%;
 }
 
 .input-container {
