@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import os
 
 app = Flask(__name__, static_folder='../frontend/dist')
@@ -27,6 +27,10 @@ def chat():
 @app.route('/')
 def serve_frontend():
     return app.send_static_file('index.html')
+
+@app.route('/assets/<path:filename>')
+def serve_assets(filename):
+    return send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
 
 if __name__ == '__main__':
     app.run(port=5000)
