@@ -1,7 +1,12 @@
 <template>
   <div class="page-container">
+    <!-- サイドメニューのトグルボタン -->
+    <button class="menu-toggle" @click="toggleMenu">
+      {{ isMenuOpen ? '≪' : '≫' }}
+    </button>
+
     <!-- サイドメニュー -->
-    <div class="side-menu">
+    <div :class="['side-menu', { 'closed': !isMenuOpen }]">
       <div class="menu-header">
         <h2>Chats</h2>
         <button @click="createNewChat" class="new-chat-btn">New Chat</button>
@@ -18,7 +23,7 @@
     </div>
 
     <!-- メインチャットエリア -->
-    <div class="chat-container">
+    <div :class="['chat-container', { 'menu-closed': !isMenuOpen }]">
       <div class="header">
         <h1>Simple Chat</h1>
       </div>
@@ -50,22 +55,33 @@ export default {
       messages: [],
       userInput: '',
       chats: [],
-      currentChatId: null
+      currentChatId: null,
+      isMenuOpen: true
     }
   },
   async mounted() {
     this.$refs.messageInput.focus();
-    window.addEventListener('resize', this.adjustMessageContainerHeight);
-    this.adjustMessageContainerHeight();
+    window.addEventListener('resize', this.handleResize);
+    this.handleResize();
     await this.loadChats();
     if (!this.currentChatId) {
       await this.createNewChat();
     }
   },
   beforeDestroy() {
-    window.removeEventListener('resize', this.adjustMessageContainerHeight);
+    window.removeEventListener('resize', this.handleResize);
   },
   methods: {
+    handleResize() {
+      this.adjustMessageContainerHeight();
+      // 画面幅が狭い場合は自動的にメニューを閉じる
+      if (window.innerWidth < 768) {
+        this.isMenuOpen = false;
+      }
+    },
+    toggleMenu() {
+      this.isMenuOpen = !this.isMenuOpen;
+    },
     formatDate(dateStr) {
       return new Date(dateStr).toLocaleString();
     },
@@ -81,6 +97,10 @@ export default {
       this.currentChatId = Date.now().toString();
       this.messages = [];
       await this.loadChats();
+      // モバイル表示の場合は自動的にメニューを閉じる
+      if (window.innerWidth < 768) {
+        this.isMenuOpen = false;
+      }
     },
     async loadChat(chatId) {
       try {
@@ -88,6 +108,10 @@ export default {
         const chatData = await response.json();
         this.messages = chatData.messages;
         this.currentChatId = chatId;
+        // モバイル表示の場合は自動的にメニューを閉じる
+        if (window.innerWidth < 768) {
+          this.isMenuOpen = false;
+        }
       } catch (error) {
         console.error('Error loading chat:', error);
       }
@@ -141,6 +165,26 @@ export default {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  position: relative;
+}
+
+.menu-toggle {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1000;
+  padding: 10px 5px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-left: none;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.3s;
+}
+
+.menu-toggle:hover {
+  opacity: 1;
 }
 
 .side-menu {
@@ -150,6 +194,13 @@ export default {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  transition: transform 0.3s ease;
+  position: relative;
+  z-index: 100;
+}
+
+.side-menu.closed {
+  transform: translateX(-100%);
 }
 
 .menu-header {
@@ -207,7 +258,12 @@ export default {
   flex-direction: column;
   padding: 20px;
   box-sizing: border-box;
-  max-width: calc(100vw - 260px);
+  transition: margin-left 0.3s ease;
+  width: 100%;
+}
+
+.chat-container.menu-closed {
+  margin-left: 0;
 }
 
 .header {
@@ -277,5 +333,17 @@ body {
   padding: 0;
   height: 100vh;
   overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .menu-toggle {
+    padding: 15px 8px;
+  }
+  
+  .side-menu {
+    position: fixed;
+    height: 100vh;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  }
 }
 </style>
