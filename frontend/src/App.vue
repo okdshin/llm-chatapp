@@ -1,8 +1,8 @@
 <template>
   <div class="page-container">
-    <!-- サイドメニューのトグルボタン -->
+    <!-- メニューのトグルボタン -->
     <button class="menu-toggle" @click="toggleMenu">
-      {{ isMenuOpen ? '≪' : '≫' }}
+      {{ isMenuOpen ? '×' : '☰' }}
     </button>
 
     <!-- サイドメニュー -->
@@ -23,7 +23,7 @@
     </div>
 
     <!-- メインチャットエリア -->
-    <div :class="['chat-container', { 'menu-closed': !isMenuOpen }]">
+    <div class="chat-container">
       <div class="header">
         <h1>Simple Chat</h1>
       </div>
@@ -45,6 +45,9 @@
         <button @click="sendMessage">Send</button>
       </div>
     </div>
+
+    <!-- オーバーレイ背景 -->
+    <div v-if="isMenuOpen" class="overlay" @click="toggleMenu"></div>
   </div>
 </template>
 
@@ -56,29 +59,22 @@ export default {
       userInput: '',
       chats: [],
       currentChatId: null,
-      isMenuOpen: true
+      isMenuOpen: false
     }
   },
   async mounted() {
     this.$refs.messageInput.focus();
-    window.addEventListener('resize', this.handleResize);
-    this.handleResize();
+    window.addEventListener('resize', this.adjustMessageContainerHeight);
+    this.adjustMessageContainerHeight();
     await this.loadChats();
     if (!this.currentChatId) {
       await this.createNewChat();
     }
   },
   beforeDestroy() {
-    window.removeEventListener('resize', this.handleResize);
+    window.removeEventListener('resize', this.adjustMessageContainerHeight);
   },
   methods: {
-    handleResize() {
-      this.adjustMessageContainerHeight();
-      // 画面幅が狭い場合は自動的にメニューを閉じる
-      if (window.innerWidth < 768) {
-        this.isMenuOpen = false;
-      }
-    },
     toggleMenu() {
       this.isMenuOpen = !this.isMenuOpen;
     },
@@ -97,10 +93,7 @@ export default {
       this.currentChatId = Date.now().toString();
       this.messages = [];
       await this.loadChats();
-      // モバイル表示の場合は自動的にメニューを閉じる
-      if (window.innerWidth < 768) {
-        this.isMenuOpen = false;
-      }
+      this.isMenuOpen = false;
     },
     async loadChat(chatId) {
       try {
@@ -108,10 +101,7 @@ export default {
         const chatData = await response.json();
         this.messages = chatData.messages;
         this.currentChatId = chatId;
-        // モバイル表示の場合は自動的にメニューを閉じる
-        if (window.innerWidth < 768) {
-          this.isMenuOpen = false;
-        }
+        this.isMenuOpen = false;
       } catch (error) {
         console.error('Error loading chat:', error);
       }
@@ -170,42 +160,53 @@ export default {
 
 .menu-toggle {
   position: fixed;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 1000;
-  padding: 10px 5px;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-left: none;
+  left: 20px;
+  top: 20px;
+  z-index: 1001;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
   cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.3s;
-}
-
-.menu-toggle:hover {
-  opacity: 1;
+  font-size: 24px;
 }
 
 .side-menu {
+  position: fixed;
+  left: 0;
+  top: 0;
   width: 260px;
+  height: 100vh;
   background-color: #f8f9fa;
-  border-right: 1px solid #dee2e6;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
+  z-index: 1000;
+  transform: translateX(-100%);
   transition: transform 0.3s ease;
-  position: relative;
-  z-index: 100;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
 }
 
 .side-menu.closed {
   transform: translateX(-100%);
 }
 
+.side-menu:not(.closed) {
+  transform: translateX(0);
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
 .menu-header {
   padding: 20px;
   border-bottom: 1px solid #dee2e6;
+  margin-top: 40px;
 }
 
 .menu-header h2 {
@@ -258,12 +259,8 @@ export default {
   flex-direction: column;
   padding: 20px;
   box-sizing: border-box;
-  transition: margin-left 0.3s ease;
   width: 100%;
-}
-
-.chat-container.menu-closed {
-  margin-left: 0;
+  padding-left: 60px;
 }
 
 .header {
@@ -333,17 +330,5 @@ body {
   padding: 0;
   height: 100vh;
   overflow: hidden;
-}
-
-@media (max-width: 768px) {
-  .menu-toggle {
-    padding: 15px 8px;
-  }
-  
-  .side-menu {
-    position: fixed;
-    height: 100vh;
-    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-  }
 }
 </style>
