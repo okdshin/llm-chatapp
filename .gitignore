@@ -15,3 +15,9 @@ dist/
 .vscode/
 *.swp
 *.swo
+
+# PyInstaller
+build/
+dist/
+*.spec
+!chat.spec
