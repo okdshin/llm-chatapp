@@ -10,7 +10,8 @@
     </div>
 
     <div class="input-container">
-      <textarea v-model="userInput" 
+      <textarea ref="messageInput"
+                v-model="userInput" 
                 @keyup.enter="sendMessage" 
                 placeholder="Type your message..."></textarea>
       <button @click="sendMessage">Send</button>
@@ -25,6 +26,10 @@ export default {
       messages: [],
       userInput: ''
     }
+  },
+  mounted() {
+    // コンポーネントのマウント時にフォーカスを設定
+    this.$refs.messageInput.focus();
   },
   methods: {
     async sendMessage() {
@@ -50,6 +55,11 @@ export default {
         this.messages.push({
           role: 'assistant',
           content: data.response
+        });
+
+        // メッセージ送信後も入力フォームにフォーカスを戻す
+        this.$nextTick(() => {
+          this.$refs.messageInput.focus();
         });
       } catch (error) {
         console.error('Error:', error);
