@@ -1,7 +1,19 @@
 from flask import Flask, request, jsonify, send_from_directory
 import os
+import sys
 
-app = Flask(__name__, static_folder='../frontend/dist')
+def get_static_folder():
+    # 実行ファイルかPythonスクリプトかを判断
+    if getattr(sys, 'frozen', False):
+        # Nuitkaでビルドされた実行ファイルの場合
+        application_path = os.path.dirname(sys.executable)
+    else:
+        # 通常のPythonスクリプトの場合
+        application_path = os.path.dirname(os.path.abspath(__file__))
+    
+    return os.path.abspath(os.path.join(application_path, '..', 'frontend', 'dist'))
+
+app = Flask(__name__, static_folder=get_static_folder())
 
 messages = []
 
