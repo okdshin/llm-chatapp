@@ -4,6 +4,12 @@ import json
 import sys
 import logging
 from datetime import datetime
+from dotenv import load_dotenv
+import asyncio
+from .llm_client import LLMClient
+
+# 環境変数のロード
+load_dotenv()
 
 # 実行ファイルのパスを取得する関数
 def get_base_path():
@@ -29,6 +35,9 @@ if not os.path.exists(CHATS_DIR):
 
 # ロガーの取得
 logger = logging.getLogger(__name__)
+
+# LLMクライアントの初期化
+llm_client = LLMClient()
 
 def load_chat(chat_id):
     try:
@@ -76,7 +85,7 @@ def get_chat(chat_id):
     return jsonify(load_chat(chat_id))
 
 @app.route('/api/chats/<chat_id>/messages', methods=['POST'])
-def add_message(chat_id):
+async def add_message(chat_id):
     try:
         data = request.json
         user_message = data.get('message', '')
@@ -91,8 +100,9 @@ def add_message(chat_id):
             'timestamp': datetime.now().isoformat()
         })
         
-        # ここに実際のClaude APIとの連携コードを追加します
-        response = "This is a sample response"
+        # LLMクライアントを使用して応答を取得
+        messages = llm_client.format_messages(chat_data["messages"])
+        response = await llm_client.get_response(messages)
         
         # アシスタントの応答を追加
         chat_data["messages"].append({
@@ -136,7 +146,11 @@ def debug_paths():
             'index_html': os.path.exists(os.path.join(app.static_folder, 'index.html')),
             'chats_dir': os.path.exists(CHATS_DIR)
         },
-        'debug_mode': app.debug
+        'debug_mode': app.debug,
+        'llm_config': {
+            'model': llm_client.model,
+            'temperature': llm_client.temperature
+        }
     }
 
 if __name__ == '__main__':

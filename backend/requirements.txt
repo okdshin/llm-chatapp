@@ -3,3 +3,5 @@ werkzeug
 pywebview
 requests
 nuitka
+litellm
+python-dotenv
