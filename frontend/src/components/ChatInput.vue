@@ -3,7 +3,9 @@
     <textarea ref="messageInput"
               v-model="inputValue" 
               @keyup.enter.prevent="handleSend" 
-              placeholder="Type your message..."></textarea>
+              :disabled="disabled"
+              :placeholder="disabled ? '応答を生成中...' : 'Type your message...'"
+              ></textarea>
   </div>
 </template>
 
@@ -11,6 +13,13 @@
 export default {
   name: 'ChatInput',
   
+  props: {
+    disabled: {
+      type: Boolean,
+      default: false
+    }
+  },
+
   data() {
     return {
       inputValue: ''
@@ -19,7 +28,7 @@ export default {
 
   methods: {
     handleSend() {
-      if (!this.inputValue.trim()) return;
+      if (this.disabled || !this.inputValue.trim()) return;
       this.$emit('send', this.inputValue.trim());
       this.inputValue = '';
     },
@@ -44,5 +53,10 @@ textarea {
   border-radius: 4px;
   resize: none;
   box-sizing: border-box;
+}
+
+textarea:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
 }
 </style>

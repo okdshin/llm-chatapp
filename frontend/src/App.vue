@@ -25,12 +25,14 @@
         
         <ChatMessages 
           :messages="messages" 
+          :streaming-content="streamingContent"
           ref="chatMessages"
         />
 
         <ChatInput 
           ref="chatInput"
           @send="sendMessage"
+          :disabled="isStreaming"
         />
       </div>
     </div>
@@ -71,7 +73,9 @@ export default {
       isOptionsOpen: false,
       apiKey: '',
       selectedModel: 'claude-3-opus',
-      darkMode: false
+      darkMode: false,
+      streamingContent: '',
+      isStreaming: false
     }
   },
 
@@ -158,6 +162,10 @@ export default {
     },
 
     async sendMessage(message) {
+      // ストリーミング開始前の準備
+      this.isStreaming = true;
+      this.streamingContent = '';
+
       // 即座にユーザーメッセージを表示
       this.messages.push({
         role: 'user',
@@ -171,34 +179,60 @@ export default {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ message })
-        });
-        
-        const chatData = await response.json();
-        
-        // アシスタントの応答を追加
-        this.messages.push({
-          role: 'assistant',
-          content: chatData.response,
-          timestamp: new Date().toISOString()
+          body: JSON.stringify({
+            message: message,
+            stream: true
+          })
         });
 
-        // チャット一覧を更新
-        await this.loadChats();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.chunk) {
+                  this.streamingContent += data.chunk;
+                } else if (data.done) {
+                  // ストリーミング完了時の処理
+                  this.messages.push({
+                    role: 'assistant',
+                    content: this.streamingContent,
+                    timestamp: new Date().toISOString()
+                  });
+                  this.streamingContent = '';
+                  await this.loadChats(); // チャット一覧を更新
+                  break;
+                } else if (data.error) {
+                  throw new Error(data.error);
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e);
+              }
+            }
+          }
+        }
       } catch (error) {
         console.error('Error:', error);
-        // エラーメッセージを表示
         this.messages.push({
           role: 'system',
           content: 'エラーが発生しました。もう一度お試しください。',
           timestamp: new Date().toISOString()
         });
+      } finally {
+        this.isStreaming = false;
+        this.$nextTick(() => {
+          this.$refs.chatInput.focus();
+        });
       }
-
-      // メッセージ入力欄にフォーカスを戻す
-      this.$nextTick(() => {
-        this.$refs.chatInput.focus();
-      });
     }
   }
 }

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response, stream_with_context
 import os
 import json
 import sys
@@ -83,35 +83,78 @@ def get_chats():
 def get_chat(chat_id):
     return jsonify(load_chat(chat_id))
 
-@app.route('/api/chats/<chat_id>/messages', methods=['POST'])
-def add_message(chat_id):
+def stream_response(chat_id: str, user_message: str):
     try:
-        data = request.json
-        user_message = data.get('message', '')
-        logger.debug(f"Received message for chat {chat_id}: {user_message[:50]}...")
-        
         chat_data = load_chat(chat_id)
+        current_time = datetime.now().isoformat()
         
         # ユーザーメッセージを追加
         chat_data["messages"].append({
             'role': 'user',
             'content': user_message,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': current_time
         })
         
-        # LLMクライアントを使用して応答を取得
+        # アシスタントの応答を準備
         messages = llm_client.format_messages(chat_data["messages"])
-        response = llm_client.get_response(messages)
+        full_response = ""
         
-        # アシスタントの応答を追加
+        # ストリーミングレスポンスを取得
+        for chunk in llm_client.get_streaming_response(messages):
+            full_response += chunk
+            yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+        
+        # 完全な応答をチャット履歴に保存
         chat_data["messages"].append({
             'role': 'assistant',
-            'content': response,
+            'content': full_response,
             'timestamp': datetime.now().isoformat()
         })
-        
         save_chat(chat_id, chat_data)
-        return jsonify({'response': response})
+        
+        yield f"data: {json.dumps({'done': True})}\n\n"
+        
+    except Exception as e:
+        logger.error(f"Error in stream_response: {e}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+@app.route('/api/chats/<chat_id>/messages', methods=['POST'])
+def add_message(chat_id):
+    try:
+        data = request.json
+        user_message = data.get('message', '')
+        stream = data.get('stream', False)  # デフォルトはストリーミングなし
+        logger.debug(f"Received message for chat {chat_id}: {user_message[:50]}...")
+
+        if stream:
+            return Response(
+                stream_with_context(stream_response(chat_id, user_message)),
+                content_type='text/event-stream'
+            )
+        else:
+            chat_data = load_chat(chat_id)
+            
+            # ユーザーメッセージを追加
+            chat_data["messages"].append({
+                'role': 'user',
+                'content': user_message,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            # LLMクライアントを使用して応答を取得
+            messages = llm_client.format_messages(chat_data["messages"])
+            response = llm_client.get_response(messages)
+            
+            # アシスタントの応答を追加
+            chat_data["messages"].append({
+                'role': 'assistant',
+                'content': response,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            save_chat(chat_id, chat_data)
+            return jsonify({'response': response})
+            
     except Exception as e:
         logger.error(f"Error processing message: {e}")
         return jsonify({'error': str(e)}), 500
@@ -124,6 +167,13 @@ def serve_frontend():
         logger.error(f"Error serving frontend: {e}")
         logger.error(f"Static folder path: {app.static_folder}")
         return f"Error: {str(e)}", 500
+
+@app.after_request
+def after_request(response):
+    if response.content_type == 'text/event-stream':
+        response.headers.add('Cache-Control', 'no-cache')
+        response.headers.add('X-Accel-Buffering', 'no')
+    return response
 
 @app.route('/assets/<path:filename>')
 def serve_assets(filename):

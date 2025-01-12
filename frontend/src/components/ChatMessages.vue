@@ -7,6 +7,12 @@
         <p>{{ message.content }}</p>
       </div>
     </div>
+    <div v-if="streamingContent" 
+         :class="['message-wrapper', 'assistant']">
+      <div class="message">
+        <p>{{ streamingContent }}</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -18,6 +24,10 @@ export default {
     messages: {
       type: Array,
       required: true
+    },
+    streamingContent: {
+      type: String,
+      default: ''
     }
   },
 
@@ -29,6 +39,12 @@ export default {
 
   updated() {
     this.$nextTick(this.scrollToBottom);
+  },
+  
+  watch: {
+    streamingContent() {
+      this.$nextTick(this.scrollToBottom);
+    }
   }
 }
 </script>
