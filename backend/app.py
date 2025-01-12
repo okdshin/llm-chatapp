@@ -5,7 +5,6 @@ import sys
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-import asyncio
 from .llm_client import LLMClient
 
 # 環境変数のロード
@@ -85,7 +84,7 @@ def get_chat(chat_id):
     return jsonify(load_chat(chat_id))
 
 @app.route('/api/chats/<chat_id>/messages', methods=['POST'])
-async def add_message(chat_id):
+def add_message(chat_id):
     try:
         data = request.json
         user_message = data.get('message', '')
@@ -102,7 +101,7 @@ async def add_message(chat_id):
         
         # LLMクライアントを使用して応答を取得
         messages = llm_client.format_messages(chat_data["messages"])
-        response = await llm_client.get_response(messages)
+        response = llm_client.get_response(messages)
         
         # アシスタントの応答を追加
         chat_data["messages"].append({

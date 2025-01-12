@@ -10,9 +10,9 @@ class LLMClient:
         self.model = os.getenv('DEFAULT_MODEL', 'claude-3-sonnet-20240229')
         self.temperature = float(os.getenv('TEMPERATURE', 0.7))
         
-    async def get_response(self, messages: List[Dict[str, str]]) -> str:
+    def get_response(self, messages: List[Dict[str, str]]) -> str:
         try:
-            response = await completion(
+            response = completion(
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature
