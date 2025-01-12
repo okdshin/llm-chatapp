@@ -181,8 +181,20 @@ export default {
     async sendMessage() {
       if (!this.userInput.trim()) return;
       
-      const message = this.userInput;
+      const userMessage = this.userInput.trim();
       this.userInput = '';
+
+      // 即座にユーザーメッセージを表示
+      this.messages.push({
+        role: 'user',
+        content: userMessage,
+        timestamp: new Date().toISOString()
+      });
+
+      // メッセージ入力欄にフォーカスを戻す
+      this.$nextTick(() => {
+        this.$refs.messageInput.focus();
+      });
 
       try {
         const response = await fetch(`/api/chats/${this.currentChatId}/messages`, {
@@ -190,18 +202,28 @@ export default {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ message })
+          body: JSON.stringify({ message: userMessage })
         });
         
         const chatData = await response.json();
-        await this.loadChat(this.currentChatId);
-        await this.loadChats();
-
-        this.$nextTick(() => {
-          this.$refs.messageInput.focus();
+        
+        // アシスタントの応答を追加
+        this.messages.push({
+          role: 'assistant',
+          content: chatData.response,
+          timestamp: new Date().toISOString()
         });
+
+        // チャット一覧を更新
+        await this.loadChats();
       } catch (error) {
         console.error('Error:', error);
+        // エラーメッセージを表示（オプション）
+        this.messages.push({
+          role: 'system',
+          content: 'エラーが発生しました。もう一度お試しください。',
+          timestamp: new Date().toISOString()
+        });
       }
     }
   },
@@ -393,6 +415,13 @@ export default {
 .assistant .message {
   background-color: #e3f2fd;
   width: 100%;
+}
+
+.system .message {
+  background-color: #ffe0e0;
+  color: #d32f2f;
+  width: 100%;
+  text-align: center;
 }
 
 .input-container {
