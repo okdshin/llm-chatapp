@@ -167,7 +167,7 @@ def add_message(chat_id):
 
             # LLMクライアントを使用して応答を取得
             messages = llm_client.format_messages(chat_data["messages"])
-            response = llm_client.get_response(messages)
+            response = llm_client.get_streaming_response(messages)
 
             # アシスタントの応答を追加
             chat_data["messages"].append(
