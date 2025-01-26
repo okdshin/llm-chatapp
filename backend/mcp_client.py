@@ -5,11 +5,9 @@ from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from dotenv import load_dotenv
 
 from mcp_config import MCPServerConfig
 
-load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
