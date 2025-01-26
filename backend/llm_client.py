@@ -11,15 +11,21 @@ class LLMClient:
         self.model = os.getenv("DEFAULT_MODEL", "claude-3-sonnet-20240229")
         self.temperature = float(os.getenv("TEMPERATURE", 0.7))
 
-    def get_response(self, messages: List[Dict[str, str]]) -> str:
-        try:
-            response = completion(
-                model=self.model, messages=messages, temperature=self.temperature
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"Error getting LLM response: {e}")
-            raise
+    def _format_tools_for_litellm(
+        self, tools: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Format MCP tools to LiteLLM format"""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "parameters": tool["input_schema"],
+                },
+            }
+            for tool in tools
+        ]
 
     def get_streaming_response(
         self, messages: List[Dict[str, str]]
