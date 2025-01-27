@@ -75,7 +75,8 @@ class LLMClient:
                 yield "tool_call_id", tool_calls[0].id
                 yield "tool_name", tool_calls[0].function.name
                 break
-            yield "content", content
+            if content:
+                yield "content", content
 
         tool_calls = []
 
@@ -176,6 +177,7 @@ async def interactive_chat(llm_client: LLMClient, mcp_manager):
                             arguments="".join(tool_arguments_chunks)
                         )
                     )
+                    print()
 
                 if not tool_calls:
                     break
@@ -184,7 +186,7 @@ async def interactive_chat(llm_client: LLMClient, mcp_manager):
                 for tool_call in tool_calls:
                     tool_name = tool_call["name"]
                     tool_args = json.loads(tool_call["arguments"])
-                    print("tool_call", f"\n[Calling tool {tool_name} with args {tool_args}]")
+                    print("tool_call", f"[Calling tool {tool_name} with args {tool_args}]")
                     try:
                         result = await mcp_manager.call_tool(tool_name, tool_args)
                         print("tool_result", f"[Tool result: {result}]")
@@ -216,6 +218,7 @@ async def interactive_chat(llm_client: LLMClient, mcp_manager):
                 }
                 messages.append(assistant_message)
                 messages.extend(tool_messages)
+                print()
 
         except Exception as e:
             print(f"\nError: {str(e)}")
