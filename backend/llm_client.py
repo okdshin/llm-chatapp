@@ -63,53 +63,23 @@ class LLMClient:
 
         # Handle content chunks
         async for chunk in response:
-            content = chunk.choices[0].delta.content
-            if (
-                not content
-                and hasattr(chunk.choices[0].delta, "tool_calls")
-                and chunk.choices[0].delta.tool_calls
-                and chunk.choices[0].delta.tool_calls[0].function.name
-            ):
-                tool_calls = chunk.choices[0].delta.tool_calls
-                assert tool_calls[0].function.name
-                yield "tool_call_id", tool_calls[0].id
-                yield "tool_name", tool_calls[0].function.name
-                break
-            if content:
-                yield "content", content
+            # Handle regular content
+            if chunk.choices[0].delta.content:
+                yield "content", chunk.choices[0].delta.content
+                continue
 
-        tool_calls = []
+            # Handle tool calls
+            tool_calls = getattr(chunk.choices[0].delta, "tool_calls", None)
+            if not tool_calls:
+                continue
 
-        # Handle the first tool_calls chunks
-        # #the first tool_arguments
-        async for chunk in response:
-            if chunk.choices[0].finish_reason:
-                break
-            assert (hasattr(chunk.choices[0].delta, "tool_calls")
-                    and chunk.choices[0].delta.tool_calls)
-            tool_calls = chunk.choices[0].delta.tool_calls
-            assert isinstance(tool_calls[0].function.arguments, str)
-            yield "args_chunk", tool_calls[0].function.arguments
-
-        # Handle second ~ tool_calls chunks
-        async for chunk in response:
-            # #tool_name
-            assert (hasattr(chunk.choices[0].delta, "tool_calls")
-                    and chunk.choices[0].delta.tool_calls)
-            tool_calls = chunk.choices[0].delta.tool_calls
-            async for chunk in response:  # skip empty tool name
-                if tool_calls[0].name:
-                    break
-            yield "tool_call_id", tool_calls[0].id
-            yield "tool_name", tool_calls[0].function.name
-
-            # #tool_arguments
-            async for chunk in response:
-                assert (hasattr(chunk.choices[0].delta, "tool_calls")
-                        and chunk.choices[0].delta.tool_calls)
-                tool_calls = chunk.choices[0].delta.tool_calls
-                assert isinstance(tool_calls[0].function.arguments, str)
-                yield "args_chunk", tool_calls[0].function.arguments
+            tool_call = tool_calls[0]
+            if tool_call.id:
+                assert tool_call.function.name
+                yield "tool_call_id", tool_call.id
+                yield "tool_name", tool_call.function.name
+            if tool_call.function.arguments:
+                yield "tool_args", tool_call.function.arguments
 
 
 async def interactive_chat(llm_client: LLMClient, mcp_manager):
@@ -165,7 +135,7 @@ async def interactive_chat(llm_client: LLMClient, mcp_manager):
                                 )
                             )
                         tool_name = chunk
-                    elif chunk_type == "args_chunk":
+                    elif chunk_type == "tool_args":
                         print(chunk, end="", flush=True)
                         tool_arguments_chunks.append(chunk)
                 if tool_name is not None:
