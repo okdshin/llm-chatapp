@@ -12,7 +12,8 @@ def _format_tools_for_litellm(
     tools: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
     """Format MCP tools to LiteLLM format"""
-    return [
+    logger.debug(f"Formatting tools for LiteLLM: {tools}")
+    formatted = [
         {
             "type": "function",
             "function": {
@@ -23,6 +24,8 @@ def _format_tools_for_litellm(
         }
         for tool in tools
     ]
+    logger.debug(f"Formatted tools: {formatted}")
+    return formatted
 
 
 @dataclass
@@ -54,6 +57,7 @@ class LLMClient:
         self.model = os.getenv("DEFAULT_MODEL", "claude-3-haiku-latest")
         self.temperature = float(os.getenv("TEMPERATURE", 0.7))
         self.max_tokens = int(os.getenv("MAX_TOKENS", "1000"))
+        logger.debug(f"Initialized LLMClient with model={self.model}, temperature={self.temperature}, max_tokens={self.max_tokens}")
 
     async def get_streaming_response(
         self,
@@ -66,7 +70,7 @@ class LLMClient:
             formatted_tools = _format_tools_for_litellm(tools) if tools else None
             return self._handle_streaming_response(messages, formatted_tools, tool_manager)
         except Exception as e:
-            logger.error(f"Error getting LLM response: {e}")
+            logger.error(f"Error getting LLM response: {e}", exc_info=True)
             raise
 
     async def _handle_streaming_response(
@@ -90,27 +94,36 @@ class LLMClient:
                 "tool_choice": "auto"
             })
 
+        logger.debug(f"Sending completion request with args: {completion_args}")
         response = await acompletion(**completion_args)
+        logger.debug("Started receiving response stream")
 
-        # Handle content chunks
-        async for chunk in response:
-            # Handle regular content
-            if chunk.choices[0].delta.content:
-                yield "content", chunk.choices[0].delta.content
-                continue
+        try:
+            # Handle content chunks
+            async for chunk in response:
+                # Handle regular content
+                if chunk.choices[0].delta.content:
+                    logger.debug(f"Content chunk: {chunk.choices[0].delta.content}")
+                    yield "content", chunk.choices[0].delta.content
+                    continue
 
-            # Handle tool calls
-            tool_calls = getattr(chunk.choices[0].delta, "tool_calls", None)
-            if not tool_calls:
-                continue
+                # Handle tool calls
+                tool_calls = getattr(chunk.choices[0].delta, "tool_calls", None)
+                if not tool_calls:
+                    continue
 
-            tool_call = tool_calls[0]
-            if tool_call.id:
-                assert tool_call.function.name
-                yield "tool_call_id", tool_call.id
-                yield "tool_name", tool_call.function.name
-            if tool_call.function.arguments:
-                yield "tool_args", tool_call.function.arguments
+                tool_call = tool_calls[0]
+                if tool_call.id:
+                    assert tool_call.function.name
+                    logger.debug(f"Tool call: id={tool_call.id}, name={tool_call.function.name}")
+                    yield "tool_call_id", tool_call.id
+                    yield "tool_name", tool_call.function.name
+                if tool_call.function.arguments:
+                    logger.debug(f"Tool args: {tool_call.function.arguments}")
+                    yield "tool_args", tool_call.function.arguments
+        except Exception as e:
+            logger.error(f"Error in streaming response: {e}", exc_info=True)
+            raise
 
 
 class ChatSession:
@@ -134,44 +147,42 @@ class ChatSession:
         """Execute a single tool call and return the corresponding message"""
         tool_name = tool_call["name"]
         try:
-            tool_args = json.loads(tool_call["arguments"])
-            self.logger.debug(f"Calling tool {tool_name} with args {tool_args}")
+            tool_args = tool_call["arguments"]
+            if isinstance(tool_args, str):
+                try:
+                    tool_args = json.loads(tool_args)
+                except json.JSONDecodeError:
+                    tool_args = {}
+
+            self.logger.debug(f"Executing tool {tool_name} with args: {tool_args}")
             
             result = await self.mcp_manager.call_tool(tool_name, tool_args)
-            self.logger.debug(f"Tool result: {result}")
+            self.logger.debug(f"Tool execution result: {result}")
             
-            return {
+            content = ""
+            if result and hasattr(result, 'content') and result.content:
+                content = result.content[0].text if isinstance(result.content, list) else str(result.content)
+            else:
+                content = str(result) if result is not None else ""
+
+            tool_message = {
                 "role": "tool",
                 "tool_call_id": tool_call["id"],
                 "name": tool_name,
-                "content": json.dumps(result.content[0].text),
+                "content": content,
             }
+            self.logger.debug(f"Created tool message: {tool_message}")
+            return tool_message
+            
         except Exception as e:
-            self.logger.error(f"Error executing tool {tool_name}: {str(e)}")
+            self.logger.error(f"Error executing tool {tool_name}: {str(e)}", exc_info=True)
             return None
-
-    def create_assistant_message(self, content_chunks: List[str], tool_calls: List[Dict]) -> Dict:
-        """Create an assistant message with tool calls"""
-        return {
-            "finish_reason": "tool_calls" if tool_calls else "stop",
-            "index": 0,
-            "role": "assistant",
-            "content": "".join(content_chunks),
-            "tool_calls": [{
-                "id": tool_call["id"],
-                "type": "function",
-                "function": {
-                    "name": tool_call["name"],
-                    "arguments": tool_call["arguments"],
-                },
-            } for tool_call in tool_calls] if tool_calls else [],
-        }
 
     async def process_llm_response(self, response) -> Tuple[List[str], List[Dict]]:
         """Process LLM response and collect content chunks and tool calls"""
         content_chunks = []
         tool_calls = []
-        current_tool = {"id": None, "name": None, "arguments": []}
+        current_tool = {"id": None, "name": None, "arguments": ""}
 
         async for chunk_type, chunk in response:
             # Create ChunkData and process it
@@ -195,13 +206,13 @@ class ChatSession:
         if chunk_type == "tool_call_id":
             if current_tool["name"]:  # Save previous tool call if exists
                 tool_calls.append(self._create_tool_call(current_tool))
-            current_tool.update({"id": chunk, "name": None, "arguments": []})
+            current_tool.update({"id": chunk, "name": None, "arguments": ""})
         
         elif chunk_type == "tool_name":
             current_tool["name"] = chunk
         
         elif chunk_type == "tool_args":
-            current_tool["arguments"].append(chunk)
+            current_tool["arguments"] = chunk
 
     @staticmethod
     def _create_tool_call(tool_info: Dict) -> Dict:
@@ -209,7 +220,7 @@ class ChatSession:
         return {
             "id": tool_info["id"],
             "name": tool_info["name"],
-            "arguments": "".join(tool_info["arguments"])
+            "arguments": tool_info["arguments"]
         }
 
 

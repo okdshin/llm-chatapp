@@ -32,6 +32,7 @@ if not os.path.exists(CHATS_DIR):
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 @dataclass
@@ -56,7 +57,7 @@ class ChatManager:
         if chat_id not in self.sessions:
             self.sessions[chat_id] = ChatSession(
                 llm_client=self.llm_client,
-                mcp_manager=self.mcp_manager,  # MCPマネージャーを渡す
+                mcp_manager=self.mcp_manager,
                 chunk_processor=chunk_processor
             )
         return self.sessions[chat_id]
@@ -143,6 +144,7 @@ async def process_chat_message(
 ) -> AsyncGenerator[str, None]:
     """Process a chat message and generate streaming response"""
     try:
+        logger.debug(f"Starting process_chat_message for chat {chat_id}")
         chat_data = load_chat(chat_id)
         
         # Add user message
@@ -157,37 +159,95 @@ async def process_chat_message(
         session = chat_manager.get_or_create_session(chat_id, chunk_processor)
         session.messages = chat_data["messages"]
 
-        # Process message with tools
-        response = await session.llm_client.get_streaming_response(
-            messages=session.messages,
-            tools=chat_manager.tools,
-            tool_manager=chat_manager.mcp_manager,
-        )
+        while True:
+            logger.debug("Starting new iteration of chat processing loop")
+            # Process message with tools
+            response = await session.llm_client.get_streaming_response(
+                messages=session.messages,
+                tools=chat_manager.tools,
+                tool_manager=chat_manager.mcp_manager,
+            )
 
-        content_chunks = []
-        async for chunk_type, chunk in response:
-            chunk_data = ChunkData(type=chunk_type, content=chunk)
-            await chunk_processor.process_chunk(chunk_data)
+            content_chunks = []
+            tool_calls = []
+            current_tool = {"id": None, "name": None, "arguments": ""}
+
+            # Process response chunks
+            async for chunk_type, chunk in response:
+                logger.debug(f"Processing chunk: type={chunk_type}, content={chunk[:100] if isinstance(chunk, str) and len(chunk) > 100 else chunk}")
+                chunk_data = ChunkData(type=chunk_type, content=chunk)
+                await chunk_processor.process_chunk(chunk_data)
+
+                if chunk_type == "content":
+                    content_chunks.append(chunk)
+                    yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+                elif chunk_type == "tool_call_id":
+                    if current_tool["name"]:
+                        logger.debug(f"Adding completed tool call: {current_tool}")
+                        tool_calls.append(current_tool.copy())
+                    current_tool = {"id": chunk, "name": None, "arguments": ""}
+                elif chunk_type == "tool_name":
+                    current_tool["name"] = chunk
+                    logger.debug(f"Tool call started: {chunk}")
+                    yield f"data: {json.dumps({'type': 'tool_call', 'name': chunk})}\n\n"
+                elif chunk_type == "tool_args":
+                    current_tool["arguments"] = chunk
+
+            # Add the last tool call if exists
+            if current_tool["name"]:
+                logger.debug(f"Adding final tool call: {current_tool}")
+                tool_calls.append(current_tool.copy())
+
+            # If no tool calls, break the loop
+            if not tool_calls:
+                logger.debug("No more tool calls, breaking loop")
+                break
+
+            # Create assistant message with tool calls
+            assistant_message = {
+                "role": "assistant",
+                "content": "".join(content_chunks),
+                "tool_calls": [{
+                    "id": tool_call["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tool_call["name"],
+                        "arguments": tool_call["arguments"],
+                    },
+                } for tool_call in tool_calls]
+            }
+            session.messages.append(assistant_message)
+
+            # Process tool calls and get results
+            logger.debug(f"Processing {len(tool_calls)} tool calls")
+            tool_messages = await session.process_tool_calls(tool_calls)
             
-            if chunk_type == "content":
-                content_chunks.append(chunk)
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            if tool_messages:
+                logger.debug(f"Received {len(tool_messages)} tool messages")
+                session.messages.extend(tool_messages)
+                for msg in tool_messages:
+                    logger.debug(f"Tool message: {msg}")
+                    yield f"data: {json.dumps({'type': 'tool_result', 'content': msg['content']})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': chunk_type, 'content': chunk})}\n\n"
+                logger.debug("No tool messages received, breaking loop")
+                break
 
-        # Save chat after processing
+            logger.debug("Completed tool processing loop iteration")
+
+        # Save final assistant message
         assistant_message = {
             "role": "assistant",
             "content": "".join(content_chunks),
             "timestamp": datetime.now().isoformat()
         }
+        logger.debug("Saving final assistant message")
         chat_data["messages"].append(assistant_message)
         save_chat(chat_id, chat_data)
 
         yield f"data: {json.dumps({'done': True})}\n\n"
 
     except Exception as e:
-        logger.error(f"Error in process_chat_message: {e}")
+        logger.error(f"Error in process_chat_message: {e}", exc_info=True)
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 
@@ -236,7 +296,7 @@ def add_message(chat_id):
         )
 
     except Exception as e:
-        logger.error(f"Error processing message: {e}")
+        logger.error(f"Error processing message: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 
