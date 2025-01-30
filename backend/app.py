@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from .llm_client import LLMClient, ChatSession, ChunkProcessor, ChunkData
 from typing import AsyncGenerator, Dict, Any, Optional
 from dataclasses import dataclass
+import asyncio
 
 # 環境変数のロード
 load_dotenv()
@@ -31,6 +32,7 @@ if not os.path.exists(CHATS_DIR):
 
 # ロガーの設定
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ChatManager:
@@ -50,7 +52,6 @@ class ChatManager:
                 chunk_processor=chunk_processor
             )
         else:
-            # Update chunk processor for existing session
             self.sessions[chat_id].chunk_processor = chunk_processor
         return self.sessions[chat_id]
 
@@ -61,11 +62,11 @@ class SSEChunkProcessor(ChunkProcessor):
         self.chunks = []
 
     async def process_chunk(self, chunk: ChunkData) -> None:
-        """Process a chunk and yield SSE formatted data"""
+        """Process a chunk and store it"""
         if chunk.type == "content":
-            yield f"data: {json.dumps({'content': chunk.content})}\n\n"
+            self.chunks.append(chunk.content)
         elif chunk.type in ["tool_name", "tool_args"]:
-            yield f"data: {json.dumps({'type': chunk.type, 'content': chunk.content})}\n\n"
+            self.chunks.append({chunk.type: chunk.content})
 
 
 def load_chat(chat_id: str) -> Dict[str, Any]:
@@ -103,7 +104,7 @@ def list_chats():
         chats = []
         for filename in os.listdir(CHATS_DIR):
             if filename.endswith(".json"):
-                chat_data = load_chat(filename[:-5])  # Remove .json extension
+                chat_data = load_chat(filename[:-5])
                 chats.append({
                     "id": chat_data["id"],
                     "created_at": chat_data["created_at"],
@@ -143,29 +144,50 @@ async def process_chat_message(
         # Process message
         response = await session.llm_client.get_streaming_response(
             messages=session.messages,
-            tools=None,  # No tools for now
+            tools=None,
         )
 
-        # Stream response
+        content_chunks = []
         async for chunk_type, chunk in response:
             chunk_data = ChunkData(type=chunk_type, content=chunk)
-            async for event in chunk_processor.process_chunk(chunk_data):
-                yield event
+            await chunk_processor.process_chunk(chunk_data)
+            
+            if chunk_type == "content":
+                content_chunks.append(chunk)
+                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
 
         # Save chat after processing
         assistant_message = {
             "role": "assistant",
-            "content": "".join(chunk.content for chunk in chunk_processor.chunks if isinstance(chunk, ChunkData) and chunk.type == "content"),
+            "content": "".join(content_chunks),
             "timestamp": datetime.now().isoformat()
         }
         chat_data["messages"].append(assistant_message)
         save_chat(chat_id, chat_data)
 
-        yield "data: {\"done\": true}\n\n"
+        yield f"data: {json.dumps({'done': True, 'content': assistant_message['content']})}\n\n"
 
     except Exception as e:
         logger.error(f"Error in process_chat_message: {e}")
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+
+def process_async_gen(agen):
+    """Process an async generator in a synchronous context"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    def gen():
+        try:
+            while True:
+                try:
+                    yield loop.run_until_complete(agen.__anext__())
+                except StopAsyncIteration:
+                    break
+        finally:
+            loop.close()
+    
+    return gen()
 
 
 # API Routes
@@ -188,8 +210,9 @@ def add_message(chat_id):
         user_message = request.json.get("message", "")
         logger.debug(f"Received message for chat {chat_id}: {user_message[:50]}...")
 
+        agen = process_chat_message(app.chat_manager, chat_id, user_message)
         return Response(
-            stream_with_context(process_chat_message(app.chat_manager, chat_id, user_message)),
+            stream_with_context(process_async_gen(agen)),
             content_type="text/event-stream"
         )
 
@@ -225,6 +248,7 @@ def after_request(response):
     if response.mimetype == "text/event-stream":
         response.headers.add("Cache-Control", "no-cache")
         response.headers.add("X-Accel-Buffering", "no")
+        response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
 

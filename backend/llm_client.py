@@ -76,15 +76,21 @@ class LLMClient:
         tool_manager,
     ) -> AsyncGenerator[str, None]:
         """Handle streaming response from LLM"""
-        response = await acompletion(
-            model=self.model,
-            messages=messages,
-            tools=formatted_tools,
-            tool_choice="auto",
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stream=True,
-        )
+        completion_args = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": True,
+        }
+
+        if formatted_tools:
+            completion_args.update({
+                "tools": formatted_tools,
+                "tool_choice": "auto"
+            })
+
+        response = await acompletion(**completion_args)
 
         # Handle content chunks
         async for chunk in response:
