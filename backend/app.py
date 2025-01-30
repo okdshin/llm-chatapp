@@ -13,7 +13,7 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from .llm_client import LLMClient, ChatSession, ChunkProcessor, ChunkData
-from typing import AsyncGenerator, Dict, Any, Optional
+from typing import AsyncGenerator, Dict, Any, Optional, List
 from dataclasses import dataclass
 import asyncio
 
@@ -40,20 +40,36 @@ class ChatManager:
     llm_client: LLMClient
     mcp_manager: Optional[Any] = None
     sessions: Dict[str, ChatSession] = None
+    tools: List[Dict] = None
 
     def __post_init__(self):
         self.sessions = {}
 
+    async def initialize(self):
+        """Initialize chat manager and load tools"""
+        if self.mcp_manager:
+            self.tools = await self.mcp_manager.list_all_tools()
+            logger.info(f"Loaded {len(self.tools)} tools")
+            
     def get_or_create_session(self, chat_id: str, chunk_processor: ChunkProcessor) -> ChatSession:
+        """Get existing chat session or create a new one"""
         if chat_id not in self.sessions:
             self.sessions[chat_id] = ChatSession(
                 llm_client=self.llm_client,
-                mcp_manager=self.mcp_manager,
+                mcp_manager=self.mcp_manager,  # MCPマネージャーを渡す
                 chunk_processor=chunk_processor
             )
-        else:
-            self.sessions[chat_id].chunk_processor = chunk_processor
         return self.sessions[chat_id]
+
+
+def create_app(mcp_manager=None):
+    """Create and configure application instance"""
+    chat_manager = ChatManager(
+        llm_client=LLMClient(),
+        mcp_manager=mcp_manager
+    )
+    app.chat_manager = chat_manager
+    return app, chat_manager
 
 
 class SSEChunkProcessor(ChunkProcessor):
@@ -141,10 +157,11 @@ async def process_chat_message(
         session = chat_manager.get_or_create_session(chat_id, chunk_processor)
         session.messages = chat_data["messages"]
 
-        # Process message
+        # Process message with tools
         response = await session.llm_client.get_streaming_response(
             messages=session.messages,
-            tools=None,
+            tools=chat_manager.tools,
+            tool_manager=chat_manager.mcp_manager,
         )
 
         content_chunks = []
@@ -155,6 +172,8 @@ async def process_chat_message(
             if chunk_type == "content":
                 content_chunks.append(chunk)
                 yield f"data: {json.dumps({'chunk': chunk})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': chunk_type, 'content': chunk})}\n\n"
 
         # Save chat after processing
         assistant_message = {
@@ -165,7 +184,7 @@ async def process_chat_message(
         chat_data["messages"].append(assistant_message)
         save_chat(chat_id, chat_data)
 
-        yield f"data: {json.dumps({'done': True, 'content': assistant_message['content']})}\n\n"
+        yield f"data: {json.dumps({'done': True})}\n\n"
 
     except Exception as e:
         logger.error(f"Error in process_chat_message: {e}")
@@ -252,15 +271,6 @@ def after_request(response):
     return response
 
 
-def create_app(mcp_manager=None):
-    """Create and configure application instance"""
-    app.chat_manager = ChatManager(
-        llm_client=LLMClient(),
-        mcp_manager=mcp_manager
-    )
-    return app
-
-
 if __name__ == "__main__":
-    app = create_app()
+    app = create_app()[0]
     app.run(port=5000)
